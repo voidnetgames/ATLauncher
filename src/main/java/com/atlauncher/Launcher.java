@@ -43,9 +43,6 @@ import com.atlauncher.constants.Constants;
 import com.atlauncher.data.DownloadableFile;
 import com.atlauncher.data.Instance;
 import com.atlauncher.data.LauncherVersion;
-import com.atlauncher.graphql.AddLauncherLaunchMutation;
-import com.atlauncher.graphql.type.AddLauncherLaunchInput;
-import com.atlauncher.graphql.type.LauncherJavaVersionInput;
 import com.atlauncher.gui.dialogs.ProgressDialog;
 import com.atlauncher.gui.tabs.PacksBrowserTab;
 import com.atlauncher.managers.AccountManager;
@@ -63,11 +60,8 @@ import com.atlauncher.managers.PackManager;
 import com.atlauncher.managers.PerformanceManager;
 import com.atlauncher.managers.ServerManager;
 import com.atlauncher.managers.TechnicModpackUpdateManager;
-import com.atlauncher.network.Analytics;
 import com.atlauncher.network.DownloadPool;
-import com.atlauncher.network.GraphqlClient;
 import com.atlauncher.network.NetworkClient;
-import com.atlauncher.network.analytics.AnalyticsEvent;
 import com.atlauncher.utils.Java;
 import com.atlauncher.utils.OS;
 import com.google.gson.JsonIOException;
@@ -96,29 +90,10 @@ public class Launcher {
 
     public void loadEverything() {
         PerformanceManager.start();
-        if (hasUpdatedFiles()) {
-            downloadUpdatedFiles(); // Downloads updated files on the server
-        }
-
-        checkForLauncherUpdate();
 
         ConfigManager.loadConfig(); // Load the config
 
         NewsManager.loadNews(); // Load the news
-
-        if (App.settings.enableAnalytics && ConfigManager.getConfigItem("useGraphqlLauncherLaunch", false)) {
-            App.TASKPOOL.execute(() -> GraphqlClient.mutate(new AddLauncherLaunchMutation(
-                AddLauncherLaunchInput.builder().version(Constants.VERSION.toStringForLogging())
-                    .hash(Constants.VERSION.getSha1Revision().toString())
-                    .installMethod(OS.getInstallMethod())
-                    .javaVersion(LauncherJavaVersionInput.builder().raw(Java.getLauncherJavaVersion())
-                        .majorVersion(Integer.toString(Java.getLauncherJavaVersionNumber()))
-                        .bitness(Java.is64Bit() ? 64 : 32)
-                        .usingJreDir(OS.isWindows() && OS.usingExe()
-                            && Files.exists(FileSystem.BASE_DIR.resolve("jre")))
-                        .build())
-                    .build())));
-        }
 
         MinecraftManager.loadMinecraftVersions(); // Load info about the different Minecraft versions
         MinecraftManager.loadJavaRuntimes(); // Load info about the different java runtimes
@@ -153,9 +128,6 @@ public class Launcher {
 
         checkForExternalPackUpdates();
 
-        if (App.settings.enableAnalytics && Analytics.isEnabled()) {
-            Analytics.startSession(App.settings.selectedTabOnStartup);
-        }
         System.gc();
         PerformanceManager.end();
     }
@@ -185,7 +157,6 @@ public class Launcher {
             }
             File newFile = FileSystem.TEMP.resolve(saveAs).toFile();
             LogManager.info("Downloading Launcher Update");
-            Analytics.trackEvent(AnalyticsEvent.simpleEvent("launcher_update"));
 
             ProgressDialog<Boolean> progressDialog = new ProgressDialog<>(GetText.tr("Downloading Launcher Update"), 1,
                 GetText.tr("Downloading Launcher Update"));
@@ -247,7 +218,6 @@ public class Launcher {
             LogManager.logStackTrace(e);
         }
 
-        Analytics.endSession();
         System.exit(0);
     }
 
@@ -365,10 +335,6 @@ public class Launcher {
         dialog.setResizable(false);
         dialog.add(new JLabel(GetText.tr("Updating Launcher. Please Wait")));
         App.TASKPOOL.execute(() -> {
-            if (hasUpdatedFiles()) {
-                downloadUpdatedFiles(); // Downloads updated files on the server
-            }
-            checkForLauncherUpdate();
             checkForExternalPackUpdates();
 
             ConfigManager.loadConfig(); // Load the config
@@ -413,7 +379,6 @@ public class Launcher {
                         .build())
                     .setType(DialogManager.ERROR).show();
                 OS.openWebBrowser("https://atlauncher.com/downloads");
-                Analytics.endSession();
                 System.exit(0);
             }
         }
